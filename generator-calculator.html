@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Generator Calculator</title>
+<style>
+:root{--bg:#14101f;--panel:#1f1830;--line:#352a52;--text:#ece8f7;--mute:#9a8fb8;--acc:#55e68a;--hl:#b98cff}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Trebuchet MS",Verdana,sans-serif;padding:24px}
+main{max-width:980px;margin:0 auto}
+h1{font-size:26px;margin:0 0 4px}
+p.sub{color:var(--mute);margin:0 0 20px}
+.top{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;flex:1;min-width:200px}
+.box label{display:block;color:var(--mute);font-size:13px;margin-bottom:4px}
+.box input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px 10px;font-size:18px}
+input:focus{outline:2px solid var(--hl)}
+.big{font-size:30px;font-weight:bold;color:var(--acc)}
+.small{color:var(--mute);font-size:13px}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.wrap{overflow-x:auto}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:normal;font-size:13px}
+td input{width:70px;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;text-align:right}
+td.g{color:var(--acc)}
+tr.best td:first-child::after{content:" ★ best payback";color:var(--hl);font-size:12px}
+h2{font-size:21px;margin:32px 0 4px}
+.chk{display:block;margin:0 0 12px;color:var(--text)}
+td select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+td input.w{width:60px}
+td button.rm{margin:0;padding:4px 9px;background:var(--line);color:var(--text)}
+button{background:var(--hl);color:#14101f;border:0;border-radius:6px;padding:8px 14px;font-weight:bold;cursor:pointer;margin-top:14px}
+</style>
+</head>
+<body>
+<main>
+<h1>Generator Calculator</h1>
+<p class="sub">Enter your multiplier and how many generators of each type you own.</p>
+
+<div class="top">
+  <div class="box"><label for="multi">Your multiplier (e.g. 2.5)</label><input id="multi" type="number" min="0" step="any" value="1"></div>
+  <div class="box"><label>Per hour (total)</label><div class="big" id="th">$0</div><div class="small" id="pm"></div><div class="small" id="split"></div></div>
+  <div class="box"><label>Per day (24h)</label><div class="big" id="td">$0</div><div class="small" id="tw"></div></div>
+</div>
+
+<div class="wrap">
+<table>
+<thead><tr><th>Generator</th><th>Quantity</th><th>Base drop</th><th>Drop w/ multi</th><th>1 generator /min</th><th>1 generator /hour</th><th>Total /min</th><th>Total /hour</th><th>Upgrade cost</th><th>Payback (1 unit)</th></tr></thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+<button id="reset">Reset quantities</button>
+<p class="small">Payback = time one generator takes to pay back its upgrade cost, with your multi. The multiplier is applied to the drop value.</p>
+
+<h2>Genstackers</h2>
+<p class="sub">Pick the generator inside and how many genstackers of each type you own.</p>
+<label class="chk"><input type="checkbox" id="apply" checked> Also apply my multiplier to genstackers</label>
+<div class="wrap">
+<table>
+<thead><tr><th>Genstacker</th><th>Quantity</th><th>Gens inside</th><th>Generator</th><th>Stacker multi</th><th>1 stacker /min</th><th>Total /hour</th><th>In-game value /min</th><th></th></tr></thead>
+<tbody id="gsrows"></tbody>
+</table>
+</div>
+<button id="addrow">+ Add genstacker</button>
+<p class="small">Each row is a group of identical genstackers (Quantity field). For stackers with a different generator or number of gens, add another row. The "In-game value" column is the income shown in the game tooltip (without your multi), so you can check the numbers match.</p>
+</main>
+
+<script>
+// name, upgrade cost, drop value, seconds between drops
+const G=[
+["Amethyst",5e8,28500,60],
+["Bedrock",2.5e9,30000,60],
+["???",5e9,36000,60],
+["Skies",7.5e9,45000,60],
+["Undergrounds",1e10,54000,60],
+["Earth",1.25e10,60000,60],
+["Water",2e10,69000,60],
+["Sun",3e10,78000,60],
+["Moon",4.5e10,90000,60],
+["Meteor",6e10,105000,60],
+["Comet",8e10,125000,60],
+["Nebula",1.1e11,150000,60],
+["Space (max)",null,900000,300]
+];
+// name, capacity, stacker multi, in-game income (/min, with the ??? generator inside)
+const S=[
+["Basic",10,1.2,432e3],
+["Improved",15,1.5,810e3],
+["Efficient",20,1.8,1.3e6],
+["Admin",50,3,5.4e6],
+["Godly",25,10,null]
+];
+const KEY="generators_v2_en";
+let st={multi:1,q:{},rows:null,apply:true};
+try{const x=localStorage.getItem(KEY);if(x)st=Object.assign(st,JSON.parse(x))}catch(e){}
+
+function fmt(n){
+  if(n===null||!isFinite(n))return"—";
+  const u=[[1e15,"Qd"],[1e12,"T"],[1e9,"B"],[1e6,"M"],[1e3,"k"]];
+  for(const[v,s]of u)if(Math.abs(n)>=v)return"$"+(n/v).toFixed(2).replace(/\.?0+$/,"")+s;
+  return"$"+Math.round(n);
+}
+function fmtTime(h){
+  if(h===null)return"—";
+  if(h<1)return Math.round(h*60)+" min";
+  if(h<48)return h.toFixed(1)+" h";
+  return(h/24).toFixed(1)+" days";
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
+
+const tb=document.getElementById("rows"),gb=document.getElementById("gsrows"),mi=document.getElementById("multi");
+G.forEach((g,i)=>{
+  const tr=document.createElement("tr");
+  tr.innerHTML=`<td>${g[0]}</td><td><input type="number" min="0" step="1" value="${st.q[i]||0}" aria-label="Quantity of ${g[0]}"></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="g"></td><td></td><td></td>`;
+  tb.appendChild(tr);
+});
+mi.value=st.multi;
+document.getElementById("apply").checked=st.apply!==false;
+
+function addRow(v){
+  const tr=document.createElement("tr");
+  tr.innerHTML=`<td><select aria-label="Genstacker type">${S.map((x,j)=>`<option value="${j}"${j==v.t?" selected":""}>${x[0]} (max ${x[1]})</option>`).join("")}</select></td><td><input type="number" min="0" step="1" value="${v.q}" aria-label="Quantity"></td><td><input class="w" type="number" min="0" max="${S[v.t][1]}" step="1" value="${v.n}" aria-label="Gens inside"></td><td><select aria-label="Generator inside">${G.map((g,j)=>`<option value="${j}"${j==v.g?" selected":""}>${g[0]}</option>`).join("")}</select></td><td></td><td></td><td class="g"></td><td></td><td><button class="rm" title="Remove row" aria-label="Remove row">✕</button></td>`;
+  gb.appendChild(tr);
+}
+(st.rows&&st.rows.length?st.rows:S.map((x,i)=>({t:i,q:0,n:x[1],g:2}))).forEach(addRow);
+
+function calc(){
+  const m=Math.max(0,parseFloat(mi.value)||0);
+  st.multi=mi.value;
+  let total=0,bestI=-1,bestR=Infinity;
+  const rows=tb.querySelectorAll("tr");
+  G.forEach((g,i)=>{
+    const q=Math.max(0,parseInt(rows[i].querySelector("input").value)||0);
+    st.q[i]=q;
+    const dph=3600/g[3], drop=g[2]*m, one=drop*dph, tot=one*q;
+    const ret=(g[1]&&one>0)?g[1]/one:null;
+    total+=tot;
+    if(ret!==null&&ret<bestR){bestR=ret;bestI=i}
+    const c=rows[i].children;
+    c[2].textContent=fmt(g[2]);c[3].textContent=fmt(drop);c[4].textContent=fmt(one/60)+"/min";
+    c[5].textContent=fmt(one);c[6].textContent=fmt(tot/60)+"/min";c[7].textContent=fmt(tot);
+    c[8].textContent=g[1]?fmt(g[1]):"max";c[9].textContent=fmtTime(ret);
+  });
+  rows.forEach((r,i)=>r.classList.toggle("best",i===bestI&&m>0));
+
+  const useM=document.getElementById("apply").checked;
+  st.apply=useM;
+  let gsTotal=0;
+  st.rows=[];
+  gb.querySelectorAll("tr").forEach(r=>{
+    const sel=r.querySelectorAll("select"),inp=r.querySelectorAll("input");
+    const s=S[sel[0].value],g=G[sel[1].value];
+    const q=Math.max(0,parseInt(inp[0].value)||0);
+    const n=Math.min(s[1],Math.max(0,parseInt(inp[1].value)||0));
+    const perMin=n*g[2]*(60/g[3])*s[2]*(useM?m:1);
+    const tot=perMin*60*q;
+    gsTotal+=tot;
+    st.rows.push({t:+sel[0].value,q,n,g:+sel[1].value});
+    const c=r.children;
+    c[4].textContent=s[2]+"x";c[5].textContent=fmt(perMin)+"/min";c[6].textContent=fmt(tot);
+    c[7].textContent=(s[3]&&sel[1].value==2&&n===s[1])?fmt(s[3])+"/min":"—";
+  });
+
+  const all=total+gsTotal;
+  document.getElementById("th").textContent=fmt(all);
+  document.getElementById("split").textContent="Generators: "+fmt(total)+" · Genstackers: "+fmt(gsTotal);
+  document.getElementById("pm").textContent="Per minute: "+fmt(all/60);
+  document.getElementById("td").textContent=fmt(all*24);
+  document.getElementById("tw").textContent="Per week: "+fmt(all*24*7);
+  save();
+}
+
+// when the genstacker type changes, set gens to its capacity
+gb.addEventListener("change",e=>{
+  const r=e.target.closest("tr");
+  if(r&&e.target===r.querySelector("select")){
+    const cap=S[e.target.value][1],n=r.querySelectorAll("input")[1];
+    n.max=cap;n.value=cap;
+  }
+});
+gb.addEventListener("click",e=>{
+  if(e.target.classList.contains("rm")){e.target.closest("tr").remove();calc()}
+});
+document.getElementById("addrow").onclick=()=>{addRow({t:0,q:1,n:S[0][1],g:2});calc()};
+document.addEventListener("input",calc);
+document.addEventListener("change",calc);
+document.getElementById("reset").onclick=()=>{document.querySelectorAll("#rows input,#gsrows input:not(.w)").forEach(x=>x.value=0);calc()};
+calc();
+</script>
+</body>
+</html>
